@@ -195,3 +195,12 @@ cython_debug/
 #  refer to https://docs.cursor.com/context/ignore-files
 .cursorignore
 .cursorindexingignore
+
+# Downloaded source data (DataLad dataset and atlas files)
+source_data/cneuromod.all/
+source_data/fedorenko/
+
+# Generated outputs
+output_data/**/*.nii.gz
+output_data/**/*.png
+output_data/**/*.csv

@@ -4,7 +4,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Overview
 
-This is the `airoh-mini` template — a starting point for structuring a reproducible data analysis. It is built on the [`invoke`](https://www.pyinvoke.org/) task runner. The `airoh` pip package provides reusable invoke tasks; this repo customizes them via `tasks.py` and `invoke.yaml`.
+**CNeuroMod GLM** — applies GLM to CNeuroMod fMRI data to compute task-based contrasts and effect maps across subjects.
+
+The pipeline: `fetch` (DataLad + Fedorenko atlas) → `run-glm` (session-level first-level GLM via nilearn) → `run-subject` (fixed-effects averaging across sessions) → `run-froi` (top-voxel Fedorenko language fROI extraction) → `run-notebooks` (visualization).
+
+Source data lives under `source_data/cneuromod.all/langlocalizer/{bids,fmriprep}/`.
+The primary chunk concept is **subject** (e.g. `sub-01`); tasks and sessions are iterated within each subject.
+
+Built on the [`invoke`](https://www.pyinvoke.org/) task runner. The `airoh` pip package provides reusable invoke tasks; this repo customizes them via `tasks.py` and `invoke.yaml`.
 
 ## Persona
 

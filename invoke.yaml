@@ -1,19 +1,37 @@
 # invoke.yaml
 
 # Code folder
-code_dir: code
+code_dir: analysis
 
-# Notebooks folders
+# Notebooks folder
 notebooks_dir: notebooks
 
-# source data folders
+# Data folders
 source_data_dir: source_data
-
-# output data folders
 output_data_dir: output_data
 
-# file sources
+# CNeuroMod DataLad superdataset (cloned into source_data/)
+cneuromod_dataset: langlocalizer
+
+# Default subjects (comma-separated; set to a subset to process fewer participants)
+subjects: sub-01,sub-02,sub-03,sub-05
+
+# Default task names (comma-separated)
+task_names: aliceEn,aliceFr,listening,reading
+
+# GLM parameters
+tr: 1.49
+smoothing_fwhm: 5.0
+n_compcor: 6
+
+# fROI parameters
+froi_top_percent: 0.10
+
+# File sources
 files:
-  papers:
-    url: https://api.figshare.com/v2/file/download/9843721
-    output_file: source_data/YNIMG_BrainParcellation_summary.tsv
+  fedorenko_atlas_nii:
+    url: https://www.evlab.mit.edu/s/allParcels-language-SN220-hgwm.nii
+    output_file: source_data/fedorenko/allParcels-language-SN220.nii
+  fedorenko_atlas_txt:
+    url: https://evlab.squarespace.com/s/allParcels-language-SN220.txt
+    output_file: source_data/fedorenko/allParcels-language-SN220.txt
