@@ -112,7 +112,6 @@ def fetch(c, subjects=None, tasks=None, smoke=False):
 
     if smoke:
         all_subjects = all_subjects[:1]
-        all_tasks = all_tasks[:1]
 
     ses_pattern = "ses-001" if smoke else "ses-*"
 
