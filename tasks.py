@@ -13,6 +13,49 @@ def _parse_list(value, default_str):
     return [v.strip() for v in default_str.split(",")]
 
 
+def _configure_ria_ssh(c, subds_path, remote_name, ssh_url):
+    """Reconfigure an ORA remote to use SSH if the current URL differs."""
+    import subprocess, re
+
+    # Parse host and path from ria+ssh://host/path
+    m = re.match(r"ria\+ssh://([^/]+)(/.+)", ssh_url)
+    if not m:
+        print(f"  [ERROR] Cannot parse SSH URL: {ssh_url}")
+        return
+    host, path = m.group(1), m.group(2)
+
+    # Verify passwordless SSH access and that the path is readable
+    probe = subprocess.run(
+        ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10", host, f"ls {path}"],
+        capture_output=True, text=True,
+    )
+    if probe.returncode != 0:
+        print(
+            f"\n[ERROR] Cannot reach {host}:{path} via SSH.\n"
+            f"  Make sure you have passwordless SSH access to '{host}' and that\n"
+            f"  the path '{path}' exists and is readable.\n"
+            f"  Quick test: ssh {host} ls {path}\n"
+            f"  SSH error: {probe.stderr.strip()}"
+        )
+        return
+
+    # Check if already configured
+    result = subprocess.run(
+        ["git", "cat-file", "-p", "refs/heads/git-annex:remote.log"],
+        cwd=str(subds_path), capture_output=True, text=True,
+    )
+    for line in result.stdout.splitlines():
+        if f"name={remote_name}" in line and f"url={ssh_url}" in line:
+            print(f"  [OK] {remote_name} already configured for SSH ({subds_path.name})")
+            return
+
+    print(f"  Configuring {remote_name} → {ssh_url} ({subds_path.name})")
+    c.run(
+        f"git -C {subds_path} annex enableremote {remote_name} url={ssh_url}",
+        warn=True,
+    )
+
+
 def _cneuromod_paths(c):
     source_dir = Path(c.config.get("source_data_dir"))
     dataset = c.config.get("cneuromod_dataset")
@@ -57,6 +100,12 @@ def fetch(c, subjects=None, tasks=None, smoke=False):
     for subds in [f"{dataset}/bids", f"{dataset}/fmriprep"]:
         c.run(f"datalad -C {repo} get -n {subds}", warn=True)
 
+    # Configure RIA SSH remotes (idempotent)
+    ssh_url = c.config.get("ria_sequoia_ssh_url", "")
+    if ssh_url:
+        for subds_path in [bids_dir, fmriprep_dir]:
+            _configure_ria_ssh(c, subds_path, "ria-sequoia-storage", ssh_url)
+
     # Get files for each subject / task
     all_subjects = _parse_list(subjects, c.config.get("subjects"))
     all_tasks = _parse_list(tasks, c.config.get("task_names"))
@@ -65,16 +114,37 @@ def fetch(c, subjects=None, tasks=None, smoke=False):
         all_subjects = all_subjects[:1]
         all_tasks = all_tasks[:1]
 
+    ses_pattern = "ses-001" if smoke else "ses-*"
+
     for subj in all_subjects:
         for task_name in all_tasks:
-            print(f"  datalad get: {subj} / {task_name}")
-            for pattern in [
-                f"{dataset}/bids/{subj}/ses-*/func/*task-{task_name}*_events.tsv",
-                f"{dataset}/fmriprep/{subj}/ses-*/func/*task-{task_name}*_bold.nii.gz",
-                f"{dataset}/fmriprep/{subj}/ses-*/func/*task-{task_name}*_mask.nii.gz",
-                f"{dataset}/fmriprep/{subj}/ses-*/func/*task-{task_name}*_confounds*.tsv",
-            ]:
-                c.run(f"datalad -C {repo} get {pattern}", warn=True)
+            print(f"  git annex get: {subj} / {ses_pattern} / {task_name}")
+            func = f"{subj}/{ses_pattern}/func"
+
+            events = list(bids_dir.glob(f"{func}/*task-{task_name}*_events.tsv"))
+            fmriprep_files = (
+                list(fmriprep_dir.glob(
+                    f"{func}/*task-{task_name}*_part-mag_space-MNI152NLin2009cAsym_desc-preproc_bold.nii.gz"
+                ))
+                + list(fmriprep_dir.glob(
+                    f"{func}/*task-{task_name}*_part-mag_space-MNI152NLin2009cAsym_desc-brain_mask.nii.gz"
+                ))
+                + list(fmriprep_dir.glob(
+                    f"{func}/*task-{task_name}*_part-mag_desc-confounds_timeseries.tsv"
+                ))
+            )
+
+            if not events and not fmriprep_files:
+                print(f"  [SKIP] No files found for {subj}/{ses_pattern}/{task_name}")
+                continue
+
+            if events:
+                rel = " ".join(str(f.relative_to(bids_dir)) for f in events)
+                c.run(f"git -C {bids_dir} annex get {rel}", warn=True)
+
+            if fmriprep_files:
+                rel = " ".join(str(f.relative_to(fmriprep_dir)) for f in fmriprep_files)
+                c.run(f"git -C {fmriprep_dir} annex get {rel}", warn=True)
 
 
 # ---------------------------------------------------------------------------

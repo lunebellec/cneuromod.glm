@@ -13,6 +13,9 @@ output_data_dir: output_data
 # CNeuroMod DataLad superdataset (cloned into source_data/)
 cneuromod_dataset: langlocalizer
 
+# SSH URL for the ria-sequoia RIA store (set to "" to skip SSH reconfiguration)
+ria_sequoia_ssh_url: ria+ssh://elm/data/neuromod/ria-sequoia
+
 # Default subjects (comma-separated; set to a subset to process fewer participants)
 subjects: sub-01,sub-02,sub-03,sub-05
 
