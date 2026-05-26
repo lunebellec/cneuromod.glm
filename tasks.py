@@ -333,20 +333,21 @@ def run_notebooks(c):
 # run  /  run-smoke
 # ---------------------------------------------------------------------------
 
-@task(pre=[fetch, run_glm, run_subject, run_froi, run_notebooks])
-def run(c):
+@task
+def run(c, smoke=False):
     """Full pipeline: fetch → run-glm → run-subject → run-froi → run-notebooks."""
+    fetch(c, smoke=smoke)
+    run_glm(c, smoke=smoke)
+    run_subject(c, smoke=smoke)
+    run_froi(c, smoke=smoke)
+    run_notebooks(c)
     print("Pipeline complete.")
 
 
 @task
 def run_smoke(c):
     """Smoke test: minimal end-to-end pass (first subject only)."""
-    fetch(c, smoke=True)
-    run_glm(c, smoke=True)
-    run_subject(c, smoke=True)
-    run_froi(c, smoke=True)
-    run_notebooks(c)
+    run(c, smoke=True)
 
 
 # ---------------------------------------------------------------------------
