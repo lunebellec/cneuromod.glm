@@ -39,10 +39,11 @@ uv run invoke fetch
 Downloads the Fedorenko atlas and installs the CNeuroMod DataLad superdataset.
 Requires SSH access to `git@github.com:courtois-neuromod/cneuromod.all.git`.
 
-To fetch data for specific subjects or tasks only:
+To fetch data for a specific dataset or subset of subjects/tasks:
 
 ```bash
-uv run invoke fetch --subjects sub-01,sub-02 --tasks listening,reading
+uv run invoke fetch --dataset langlocalizer
+uv run invoke fetch --dataset hcptrt --subjects sub-01,sub-02 --tasks motor,language
 ```
 
 ### Run the full pipeline
@@ -67,10 +68,11 @@ uv run invoke run-froi             # Fedorenko fROI extraction
 uv run invoke run-notebooks        # Visualization figures
 ```
 
-Each step supports `--subjects` and `--tasks` for partial runs:
+Each step supports `--dataset`, `--subjects`, and `--tasks` for partial runs:
 
 ```bash
-uv run invoke run-glm --subjects sub-01 --tasks listening
+uv run invoke run-glm --dataset langlocalizer --subjects sub-01 --tasks listening
+uv run invoke run-glm --dataset hcptrt --subjects sub-01 --tasks motor,language
 ```
 
 ### Smoke test
@@ -118,11 +120,13 @@ Use `uv run invoke --list` for all tasks.
 
 Edit `invoke.yaml` to change defaults:
 
-- `subjects` — comma-separated list of CNeuroMod participant IDs
-- `tasks` — comma-separated list of task names (`aliceEn`, `aliceFr`, `listening`, `reading`)
-- `cneuromod_dataset` — which CNeuroMod subdataset to use (default: `langlocalizer`)
-- `tr`, `smoothing_fwhm`, `n_compcor` — GLM parameters
+- `datasets` — dict of datasets; each entry has `model`, `subjects`, and `task_names`.
+  Currently configured: `langlocalizer` and `hcptrt`.
+- `tr`, `smoothing_fwhm`, `n_compcor` — GLM parameters (shared across datasets)
 - `froi_top_percent` — fraction of top voxels selected per Fedorenko parcel
+
+Per-dataset scientific specifications (contrasts, event transformations, file patterns)
+live in `models/{dataset}.json` — BIDS Stats Models 1.0.0 format.
 
 ---
 
@@ -130,12 +134,13 @@ Edit `invoke.yaml` to change defaults:
 
 | Folder / File       | Description                                          |
 | ------------------- | ---------------------------------------------------- |
-| `analysis/`         | Pure Python analysis code (GLM, fROI functions)      |
+| `analysis/`         | Pure Python analysis code (GLM, fROI functions, model spec parser) |
+| `models/`           | BIDS Stats Models 1.0.0 descriptors — one per dataset |
 | `notebooks/`        | Visualization notebooks (read from `output_data/`)   |
 | `source_data/`      | Raw inputs — see [`source_data/CONTENT.md`](source_data/CONTENT.md) |
 | `output_data/`      | Results and figures — see [`output_data/CONTENT.md`](output_data/CONTENT.md) |
 | `tasks.py`          | Invoke task definitions                              |
-| `invoke.yaml`       | Config: paths, subjects, tasks, GLM parameters       |
+| `invoke.yaml`       | Config: datasets, paths, GLM parameters              |
 
 ---
 

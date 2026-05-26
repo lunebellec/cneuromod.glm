@@ -1,0 +1,163 @@
+{
+  "Name": "langlocalizer",
+  "BIDSModelVersion": "1.0.0",
+  "Description": "First-level GLM for CNeuroMod langlocalizer tasks (aliceEn, aliceFr, listening, reading).",
+  "Input": {
+    "task": ["aliceEn", "aliceFr", "listening", "reading"]
+  },
+  "Nodes": [
+    {
+      "Level": "Run",
+      "Name": "run_listening",
+      "Filter": {"task": ["listening"]},
+      "Transformations": {
+        "Transformer": "pybids-transforms-v1",
+        "Instructions": []
+      },
+      "Model": {
+        "X": ["trial_type"],
+        "HRF": {"Model": "spm"}
+      },
+      "Contrasts": [
+        {"Name": "int",      "ConditionList": ["trial_type.int"],  "Weights": [1],     "Test": "t"},
+        {"Name": "degr",     "ConditionList": ["trial_type.degr"], "Weights": [1],     "Test": "t"},
+        {"Name": "int-degr", "ConditionList": ["trial_type.int",  "trial_type.degr"], "Weights": [1, -1], "Test": "t"},
+        {"Name": "degr-int", "ConditionList": ["trial_type.degr", "trial_type.int"],  "Weights": [1, -1], "Test": "t"}
+      ]
+    },
+    {
+      "Level": "Run",
+      "Name": "run_aliceFr",
+      "Filter": {"task": ["aliceFr"]},
+      "Transformations": {
+        "Transformer": "pybids-transforms-v1",
+        "Instructions": []
+      },
+      "Model": {
+        "X": ["trial_type"],
+        "HRF": {"Model": "spm"}
+      },
+      "Contrasts": [
+        {"Name": "int",       "ConditionList": ["trial_type.int"],   "Weights": [1],     "Test": "t"},
+        {"Name": "degr",      "ConditionList": ["trial_type.degr"],  "Weights": [1],     "Test": "t"},
+        {"Name": "tamil",     "ConditionList": ["trial_type.tamil"], "Weights": [1],     "Test": "t"},
+        {"Name": "int-degr",  "ConditionList": ["trial_type.int",   "trial_type.degr"], "Weights": [1, -1], "Test": "t"},
+        {"Name": "degr-int",  "ConditionList": ["trial_type.degr",  "trial_type.int"],  "Weights": [1, -1], "Test": "t"},
+        {"Name": "tamil-degr","ConditionList": ["trial_type.tamil", "trial_type.degr"], "Weights": [1, -1], "Test": "t"},
+        {"Name": "tamil-int", "ConditionList": ["trial_type.tamil", "trial_type.int"],  "Weights": [1, -1], "Test": "t"}
+      ]
+    },
+    {
+      "Level": "Run",
+      "Name": "run_aliceEn",
+      "Filter": {"task": ["aliceEn"]},
+      "Transformations": {
+        "Transformer": "pybids-transforms-v1",
+        "Instructions": []
+      },
+      "Model": {
+        "X": ["trial_type"],
+        "HRF": {"Model": "spm"}
+      },
+      "Contrasts": [
+        {"Name": "int",       "ConditionList": ["trial_type.int"],   "Weights": [1],     "Test": "t"},
+        {"Name": "degr",      "ConditionList": ["trial_type.degr"],  "Weights": [1],     "Test": "t"},
+        {"Name": "int-degr",  "ConditionList": ["trial_type.int",   "trial_type.degr"], "Weights": [1, -1], "Test": "t"},
+        {"Name": "degr-int",  "ConditionList": ["trial_type.degr",  "trial_type.int"],  "Weights": [1, -1], "Test": "t"},
+        {"Name": "tamil-degr","ConditionList": ["trial_type.tamil", "trial_type.degr"], "Weights": [1, -1], "Test": "t"},
+        {"Name": "tamil-int", "ConditionList": ["trial_type.tamil", "trial_type.int"],  "Weights": [1, -1], "Test": "t"}
+      ]
+    },
+    {
+      "Level": "Run",
+      "Name": "run_reading",
+      "Filter": {"task": ["reading"]},
+      "Transformations": {
+        "Transformer": "pybids-transforms-v1",
+        "Instructions": [
+          {
+            "Name": "Replace",
+            "Input": ["trial_type"],
+            "Map": {"non-word": "nonword"},
+            "_comment": "Hyphens are invalid in nilearn contrast expressions."
+          }
+        ]
+      },
+      "Model": {
+        "X": ["trial_type"],
+        "HRF": {"Model": "spm"}
+      },
+      "Contrasts": [
+        {"Name": "word",         "ConditionList": ["trial_type.word"],    "Weights": [1],     "Test": "t"},
+        {"Name": "nonword",      "ConditionList": ["trial_type.nonword"], "Weights": [1],     "Test": "t"},
+        {"Name": "word-nonword", "ConditionList": ["trial_type.word",    "trial_type.nonword"], "Weights": [1, -1], "Test": "t"},
+        {"Name": "nonword-word", "ConditionList": ["trial_type.nonword", "trial_type.word"],    "Weights": [1, -1], "Test": "t"}
+      ]
+    },
+    {
+      "Level": "Subject",
+      "Name": "subject_listening",
+      "Filter": {"task": ["listening"]},
+      "Contrasts": [
+        {"Name": "int-degr", "ConditionList": ["run_listening.int-degr"], "Weights": [1], "Test": "pass"},
+        {"Name": "degr-int", "ConditionList": ["run_listening.degr-int"], "Weights": [1], "Test": "pass"},
+        {"Name": "int",      "ConditionList": ["run_listening.int"],      "Weights": [1], "Test": "pass"},
+        {"Name": "degr",     "ConditionList": ["run_listening.degr"],     "Weights": [1], "Test": "pass"}
+      ]
+    },
+    {
+      "Level": "Subject",
+      "Name": "subject_aliceFr",
+      "Filter": {"task": ["aliceFr"]},
+      "Contrasts": [
+        {"Name": "int-degr", "ConditionList": ["run_aliceFr.int-degr"], "Weights": [1], "Test": "pass"},
+        {"Name": "degr-int", "ConditionList": ["run_aliceFr.degr-int"], "Weights": [1], "Test": "pass"},
+        {"Name": "int",      "ConditionList": ["run_aliceFr.int"],      "Weights": [1], "Test": "pass"},
+        {"Name": "degr",     "ConditionList": ["run_aliceFr.degr"],     "Weights": [1], "Test": "pass"}
+      ]
+    },
+    {
+      "Level": "Subject",
+      "Name": "subject_aliceEn",
+      "Filter": {"task": ["aliceEn"]},
+      "Contrasts": [
+        {"Name": "int-degr", "ConditionList": ["run_aliceEn.int-degr"], "Weights": [1], "Test": "pass"},
+        {"Name": "degr-int", "ConditionList": ["run_aliceEn.degr-int"], "Weights": [1], "Test": "pass"},
+        {"Name": "int",      "ConditionList": ["run_aliceEn.int"],      "Weights": [1], "Test": "pass"},
+        {"Name": "degr",     "ConditionList": ["run_aliceEn.degr"],     "Weights": [1], "Test": "pass"}
+      ]
+    },
+    {
+      "Level": "Subject",
+      "Name": "subject_reading",
+      "Filter": {"task": ["reading"]},
+      "Contrasts": [
+        {"Name": "word-nonword", "ConditionList": ["run_reading.word-nonword"], "Weights": [1], "Test": "pass"},
+        {"Name": "nonword-word", "ConditionList": ["run_reading.nonword-word"], "Weights": [1], "Test": "pass"},
+        {"Name": "word",         "ConditionList": ["run_reading.word"],         "Weights": [1], "Test": "pass"},
+        {"Name": "nonword",      "ConditionList": ["run_reading.nonword"],      "Weights": [1], "Test": "pass"}
+      ]
+    }
+  ],
+  "Edges": [
+    {"Source": "run_listening", "Destination": "subject_listening"},
+    {"Source": "run_aliceFr",   "Destination": "subject_aliceFr"},
+    {"Source": "run_aliceEn",   "Destination": "subject_aliceEn"},
+    {"Source": "run_reading",   "Destination": "subject_reading"}
+  ],
+  "Extensions": {
+    "_comment": "Non-standard fields specific to this pipeline. Transformations use Replace and Drop instructions documented below.",
+    "FROIContrasts": {
+      "listening": ["int-degr"],
+      "aliceFr":   ["int-degr"],
+      "aliceEn":   ["int-degr"],
+      "reading":   ["word-nonword"]
+    },
+    "FilePatterns": {
+      "bold":      "*_part-mag_space-MNI152NLin2009cAsym_desc-preproc_bold.nii.gz",
+      "mask":      "*_part-mag_space-MNI152NLin2009cAsym_desc-brain_mask.nii.gz",
+      "confounds": "*_part-mag_desc-confounds_timeseries.tsv"
+    },
+    "HasRunDimension": false
+  }
+}

@@ -13,10 +13,14 @@
 ## `cneuromod.all/`
 
 DataLad superdataset cloned from `git@github.com:courtois-neuromod/cneuromod.all.git`.
-Only the `langlocalizer` subdataset is used by this project:
+Two subdatasets are used:
 
-- `cneuromod.all/langlocalizer/bids/` — BIDS dataset with task event files.
-- `cneuromod.all/langlocalizer/fmriprep/` — fMRIPrep preprocessed BOLD images,
-  brain masks, and confound files.
+- `cneuromod.all/langlocalizer/bids/` — BIDS dataset with task event files (aliceEn, aliceFr, listening, reading).
+- `cneuromod.all/langlocalizer/fmriprep/` — fMRIPrep preprocessed BOLD images, brain masks, and confound files.
+- `cneuromod.all/hcptrt/bids/` — BIDS dataset with HCP task event files (motor, wm, gambling, social, language, relational, emotion).
+- `cneuromod.all/hcptrt/fmriprep/` — fMRIPrep preprocessed files for hcptrt.
+
+Each dataset's statistical model (contrasts, event transformations, file patterns) is described in the
+corresponding `models/{dataset}.json` BIDS Stats Models 1.0.0 file.
 
 📝 All data files in this folder are **ignored by Git** (see `.gitignore`).

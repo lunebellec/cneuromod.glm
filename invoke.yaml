@@ -10,19 +10,21 @@ notebooks_dir: notebooks
 source_data_dir: source_data
 output_data_dir: output_data
 
-# CNeuroMod DataLad superdataset (cloned into source_data/)
-cneuromod_dataset: langlocalizer
+# CNeuroMod datasets — each has its own BIDS Stats Models descriptor and subject list.
+# Run a single dataset:  invoke run-glm --dataset langlocalizer
+# Run all datasets:      invoke run
+datasets:
+  langlocalizer:
+    model: models/langlocalizer.json
+    subjects: sub-01,sub-02,sub-03,sub-05
+  hcptrt:
+    model: models/hcptrt.json
+    subjects: sub-01,sub-02,sub-03,sub-04,sub-05,sub-06
 
 # SSH URL for the ria-sequoia RIA store (set to "" to skip SSH reconfiguration)
 ria_sequoia_ssh_url: ria+ssh://elm/data/neuromod/ria-sequoia
 
-# Default subjects (comma-separated; set to a subset to process fewer participants)
-subjects: sub-01,sub-02,sub-03,sub-05
-
-# Default task names (comma-separated)
-task_names: aliceEn,aliceFr,listening,reading
-
-# GLM parameters
+# GLM parameters (shared across datasets; override per-dataset in the model JSON if needed)
 tr: 1.49
 smoothing_fwhm: 5.0
 n_compcor: 6

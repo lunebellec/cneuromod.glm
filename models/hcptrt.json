@@ -1,0 +1,328 @@
+{
+  "Name": "hcptrt",
+  "BIDSModelVersion": "1.0.0",
+  "Description": "First-level GLM for CNeuroMod hcptrt tasks (motor, wm, gambling, social, language, relational, emotion).",
+  "Input": {
+    "task": ["motor", "wm", "gambling", "social", "language", "relational", "emotion"]
+  },
+  "Nodes": [
+    {
+      "Level": "Run",
+      "Name": "run_gambling",
+      "Filter": {"task": ["gambling"]},
+      "Transformations": {
+        "Transformer": "pybids-transforms-v1",
+        "Instructions": [
+          {
+            "Name": "Replace",
+            "Input": ["trial_type"],
+            "Map": {
+              "Reward":      "reward",
+              "Punishment":  "punishment",
+              "Neutral":     "neutral",
+              "Feedback":    "feedback"
+            }
+          },
+          {"Name": "Drop", "Input": ["trial_type"], "Values": ["countdown"]}
+        ]
+      },
+      "Model": {"X": ["trial_type"], "HRF": {"Model": "spm"}},
+      "Contrasts": [
+        {"Name": "reward",              "ConditionList": ["trial_type.reward"],      "Weights": [1],     "Test": "t"},
+        {"Name": "punishment",          "ConditionList": ["trial_type.punishment"],  "Weights": [1],     "Test": "t"},
+        {"Name": "reward-punishment",   "ConditionList": ["trial_type.reward",      "trial_type.punishment"], "Weights": [1, -1], "Test": "t"},
+        {"Name": "punishment-reward",   "ConditionList": ["trial_type.punishment",  "trial_type.reward"],     "Weights": [1, -1], "Test": "t"}
+      ]
+    },
+    {
+      "Level": "Run",
+      "Name": "run_social",
+      "Filter": {"task": ["social"]},
+      "Transformations": {
+        "Transformer": "pybids-transforms-v1",
+        "Instructions": [
+          {"Name": "Drop", "Input": ["trial_type"], "Values": ["countdown"]}
+        ]
+      },
+      "Model": {"X": ["trial_type"], "HRF": {"Model": "spm"}},
+      "Contrasts": [
+        {"Name": "mental",        "ConditionList": ["trial_type.mental"],  "Weights": [1],     "Test": "t"},
+        {"Name": "random",        "ConditionList": ["trial_type.random"],  "Weights": [1],     "Test": "t"},
+        {"Name": "mental-random", "ConditionList": ["trial_type.mental",  "trial_type.random"], "Weights": [1, -1], "Test": "t"},
+        {"Name": "random-mental", "ConditionList": ["trial_type.random",  "trial_type.mental"], "Weights": [1, -1], "Test": "t"}
+      ]
+    },
+    {
+      "Level": "Run",
+      "Name": "run_relational",
+      "Filter": {"task": ["relational"]},
+      "Transformations": {
+        "Transformer": "pybids-transforms-v1",
+        "Instructions": [
+          {
+            "Name": "Replace",
+            "Input": ["trial_type"],
+            "Map": {
+              "Relational":          "relational",
+              "Control":             "control",
+              "new_bloc_relational": "new_bloc_relational",
+              "new_bloc_control":    "new_bloc_control"
+            }
+          },
+          {"Name": "Drop", "Input": ["trial_type"], "Values": ["countdown"]}
+        ]
+      },
+      "Model": {"X": ["trial_type"], "HRF": {"Model": "spm"}},
+      "Contrasts": [
+        {"Name": "relational",          "ConditionList": ["trial_type.relational"], "Weights": [1],     "Test": "t"},
+        {"Name": "control",             "ConditionList": ["trial_type.control"],    "Weights": [1],     "Test": "t"},
+        {"Name": "relational-control",  "ConditionList": ["trial_type.relational", "trial_type.control"], "Weights": [1, -1], "Test": "t"},
+        {"Name": "control-relational",  "ConditionList": ["trial_type.control",    "trial_type.relational"], "Weights": [1, -1], "Test": "t"}
+      ]
+    },
+    {
+      "Level": "Run",
+      "Name": "run_language",
+      "Filter": {"task": ["language"]},
+      "Transformations": {
+        "Transformer": "pybids-transforms-v1",
+        "Instructions": [
+          {"Name": "Drop", "Input": ["trial_type"], "Values": ["countdown"]}
+        ]
+      },
+      "Model": {"X": ["trial_type"], "HRF": {"Model": "spm"}},
+      "Contrasts": [
+        {"Name": "story",      "ConditionList": ["trial_type.presentation_story"], "Weights": [1],     "Test": "t"},
+        {"Name": "math",       "ConditionList": ["trial_type.presentation_math"],  "Weights": [1],     "Test": "t"},
+        {"Name": "story-math", "ConditionList": ["trial_type.presentation_story", "trial_type.presentation_math"], "Weights": [1, -1], "Test": "t"},
+        {"Name": "math-story", "ConditionList": ["trial_type.presentation_math",  "trial_type.presentation_story"], "Weights": [1, -1], "Test": "t"}
+      ]
+    },
+    {
+      "Level": "Run",
+      "Name": "run_emotion",
+      "Filter": {"task": ["emotion"]},
+      "Transformations": {
+        "Transformer": "pybids-transforms-v1",
+        "Instructions": [
+          {
+            "Name": "Replace",
+            "Input": ["trial_type"],
+            "Map": {
+              "response_face":  "Face",
+              "response_shape": "Shape"
+            }
+          },
+          {"Name": "Drop", "Input": ["trial_type"], "Values": ["countdown"]}
+        ]
+      },
+      "Model": {"X": ["trial_type"], "HRF": {"Model": "spm"}},
+      "Contrasts": [
+        {"Name": "Face",        "ConditionList": ["trial_type.Face"],  "Weights": [1],     "Test": "t"},
+        {"Name": "Shape",       "ConditionList": ["trial_type.Shape"], "Weights": [1],     "Test": "t"},
+        {"Name": "Face-Shape",  "ConditionList": ["trial_type.Face",  "trial_type.Shape"], "Weights": [1, -1], "Test": "t"},
+        {"Name": "Shape-Face",  "ConditionList": ["trial_type.Shape", "trial_type.Face"],  "Weights": [1, -1], "Test": "t"}
+      ]
+    },
+    {
+      "Level": "Run",
+      "Name": "run_motor",
+      "Filter": {"task": ["motor"]},
+      "Transformations": {
+        "Transformer": "pybids-transforms-v1",
+        "Instructions": [
+          {
+            "Name": "Replace",
+            "Input": ["trial_type"],
+            "Map": {
+              "response_left_hand":  "Left_Hand",
+              "response_right_hand": "Right_Hand",
+              "response_left_foot":  "Left_Foot",
+              "response_right_foot": "Right_Foot",
+              "response_tongue":     "Tongue"
+            }
+          },
+          {"Name": "Drop", "Input": ["trial_type"], "Values": ["countdown"]}
+        ]
+      },
+      "Model": {"X": ["trial_type"], "HRF": {"Model": "spm"}},
+      "Contrasts": [
+        {"Name": "Left_Hand",  "ConditionList": ["trial_type.Left_Hand"],  "Weights": [1],     "Test": "t"},
+        {"Name": "Right_Hand", "ConditionList": ["trial_type.Right_Hand"], "Weights": [1],     "Test": "t"},
+        {"Name": "Left_Foot",  "ConditionList": ["trial_type.Left_Foot"],  "Weights": [1],     "Test": "t"},
+        {"Name": "Right_Foot", "ConditionList": ["trial_type.Right_Foot"], "Weights": [1],     "Test": "t"},
+        {"Name": "Tongue",     "ConditionList": ["trial_type.Tongue"],     "Weights": [1],     "Test": "t"},
+        {"Name": "LH-RH",      "ConditionList": ["trial_type.Left_Hand",  "trial_type.Right_Hand"], "Weights": [1, -1], "Test": "t"},
+        {"Name": "RH-LH",      "ConditionList": ["trial_type.Right_Hand", "trial_type.Left_Hand"],  "Weights": [1, -1], "Test": "t"},
+        {"Name": "LF-RF",      "ConditionList": ["trial_type.Left_Foot",  "trial_type.Right_Foot"], "Weights": [1, -1], "Test": "t"},
+        {"Name": "RF-LF",      "ConditionList": ["trial_type.Right_Foot", "trial_type.Left_Foot"],  "Weights": [1, -1], "Test": "t"}
+      ]
+    },
+    {
+      "Level": "Run",
+      "Name": "run_wm",
+      "Filter": {"task": ["wm"]},
+      "Transformations": {
+        "Transformer": "pybids-transforms-v1",
+        "Instructions": [
+          {
+            "Name": "Replace",
+            "Input": ["trial_type"],
+            "Map": {
+              "0-BackBody":  "zeroback_body",
+              "0-BackFace":  "zeroback_face",
+              "0-BackPlace": "zeroback_place",
+              "0-BackTools": "zeroback_tools",
+              "2-BackBody":  "twoback_body",
+              "2-BackFace":  "twoback_face",
+              "2-BackPlace": "twoback_place",
+              "2-BackTools": "twoback_tools"
+            },
+            "_comment": "Nilearn does not allow identifiers starting with a digit."
+          },
+          {"Name": "Drop", "Input": ["trial_type"], "Values": ["countdown"]}
+        ]
+      },
+      "Model": {"X": ["trial_type"], "HRF": {"Model": "spm"}},
+      "Contrasts": [
+        {"Name": "zeroback_body",          "ConditionList": ["trial_type.zeroback_body"],  "Weights": [1], "Test": "t"},
+        {"Name": "zeroback_face",          "ConditionList": ["trial_type.zeroback_face"],  "Weights": [1], "Test": "t"},
+        {"Name": "zeroback_place",         "ConditionList": ["trial_type.zeroback_place"], "Weights": [1], "Test": "t"},
+        {"Name": "zeroback_tools",         "ConditionList": ["trial_type.zeroback_tools"], "Weights": [1], "Test": "t"},
+        {"Name": "twoback_body",           "ConditionList": ["trial_type.twoback_body"],   "Weights": [1], "Test": "t"},
+        {"Name": "twoback_face",           "ConditionList": ["trial_type.twoback_face"],   "Weights": [1], "Test": "t"},
+        {"Name": "twoback_place",          "ConditionList": ["trial_type.twoback_place"],  "Weights": [1], "Test": "t"},
+        {"Name": "twoback_tools",          "ConditionList": ["trial_type.twoback_tools"],  "Weights": [1], "Test": "t"},
+        {"Name": "twoback-zeroback_body",  "ConditionList": ["trial_type.twoback_body",   "trial_type.zeroback_body"],  "Weights": [1, -1], "Test": "t"},
+        {"Name": "zeroback-twoback_body",  "ConditionList": ["trial_type.zeroback_body",  "trial_type.twoback_body"],   "Weights": [1, -1], "Test": "t"},
+        {"Name": "twoback-zeroback_face",  "ConditionList": ["trial_type.twoback_face",   "trial_type.zeroback_face"],  "Weights": [1, -1], "Test": "t"},
+        {"Name": "zeroback-twoback_face",  "ConditionList": ["trial_type.zeroback_face",  "trial_type.twoback_face"],   "Weights": [1, -1], "Test": "t"},
+        {"Name": "twoback-zeroback_place", "ConditionList": ["trial_type.twoback_place",  "trial_type.zeroback_place"], "Weights": [1, -1], "Test": "t"},
+        {"Name": "zeroback-twoback_place", "ConditionList": ["trial_type.zeroback_place", "trial_type.twoback_place"],  "Weights": [1, -1], "Test": "t"},
+        {"Name": "twoback-zeroback_tools", "ConditionList": ["trial_type.twoback_tools",  "trial_type.zeroback_tools"], "Weights": [1, -1], "Test": "t"},
+        {"Name": "zeroback-twoback_tools", "ConditionList": ["trial_type.zeroback_tools", "trial_type.twoback_tools"],  "Weights": [1, -1], "Test": "t"}
+      ]
+    },
+    {
+      "Level": "Subject",
+      "Name": "subject_gambling",
+      "Filter": {"task": ["gambling"]},
+      "Contrasts": [
+        {"Name": "reward-punishment", "ConditionList": ["run_gambling.reward-punishment"], "Weights": [1], "Test": "pass"},
+        {"Name": "punishment-reward", "ConditionList": ["run_gambling.punishment-reward"], "Weights": [1], "Test": "pass"},
+        {"Name": "reward",            "ConditionList": ["run_gambling.reward"],            "Weights": [1], "Test": "pass"},
+        {"Name": "punishment",        "ConditionList": ["run_gambling.punishment"],        "Weights": [1], "Test": "pass"}
+      ]
+    },
+    {
+      "Level": "Subject",
+      "Name": "subject_social",
+      "Filter": {"task": ["social"]},
+      "Contrasts": [
+        {"Name": "mental-random", "ConditionList": ["run_social.mental-random"], "Weights": [1], "Test": "pass"},
+        {"Name": "random-mental", "ConditionList": ["run_social.random-mental"], "Weights": [1], "Test": "pass"},
+        {"Name": "mental",        "ConditionList": ["run_social.mental"],        "Weights": [1], "Test": "pass"},
+        {"Name": "random",        "ConditionList": ["run_social.random"],        "Weights": [1], "Test": "pass"}
+      ]
+    },
+    {
+      "Level": "Subject",
+      "Name": "subject_relational",
+      "Filter": {"task": ["relational"]},
+      "Contrasts": [
+        {"Name": "relational-control", "ConditionList": ["run_relational.relational-control"], "Weights": [1], "Test": "pass"},
+        {"Name": "control-relational", "ConditionList": ["run_relational.control-relational"], "Weights": [1], "Test": "pass"},
+        {"Name": "relational",         "ConditionList": ["run_relational.relational"],         "Weights": [1], "Test": "pass"},
+        {"Name": "control",            "ConditionList": ["run_relational.control"],            "Weights": [1], "Test": "pass"}
+      ]
+    },
+    {
+      "Level": "Subject",
+      "Name": "subject_language",
+      "Filter": {"task": ["language"]},
+      "Contrasts": [
+        {"Name": "story-math", "ConditionList": ["run_language.story-math"], "Weights": [1], "Test": "pass"},
+        {"Name": "math-story", "ConditionList": ["run_language.math-story"], "Weights": [1], "Test": "pass"},
+        {"Name": "story",      "ConditionList": ["run_language.story"],      "Weights": [1], "Test": "pass"},
+        {"Name": "math",       "ConditionList": ["run_language.math"],       "Weights": [1], "Test": "pass"}
+      ]
+    },
+    {
+      "Level": "Subject",
+      "Name": "subject_emotion",
+      "Filter": {"task": ["emotion"]},
+      "Contrasts": [
+        {"Name": "Face-Shape", "ConditionList": ["run_emotion.Face-Shape"], "Weights": [1], "Test": "pass"},
+        {"Name": "Shape-Face", "ConditionList": ["run_emotion.Shape-Face"], "Weights": [1], "Test": "pass"},
+        {"Name": "Face",       "ConditionList": ["run_emotion.Face"],       "Weights": [1], "Test": "pass"},
+        {"Name": "Shape",      "ConditionList": ["run_emotion.Shape"],      "Weights": [1], "Test": "pass"}
+      ]
+    },
+    {
+      "Level": "Subject",
+      "Name": "subject_motor",
+      "Filter": {"task": ["motor"]},
+      "Contrasts": [
+        {"Name": "LH-RH",      "ConditionList": ["run_motor.LH-RH"],      "Weights": [1], "Test": "pass"},
+        {"Name": "RH-LH",      "ConditionList": ["run_motor.RH-LH"],      "Weights": [1], "Test": "pass"},
+        {"Name": "LF-RF",      "ConditionList": ["run_motor.LF-RF"],      "Weights": [1], "Test": "pass"},
+        {"Name": "RF-LF",      "ConditionList": ["run_motor.RF-LF"],      "Weights": [1], "Test": "pass"},
+        {"Name": "Left_Hand",  "ConditionList": ["run_motor.Left_Hand"],  "Weights": [1], "Test": "pass"},
+        {"Name": "Right_Hand", "ConditionList": ["run_motor.Right_Hand"], "Weights": [1], "Test": "pass"},
+        {"Name": "Left_Foot",  "ConditionList": ["run_motor.Left_Foot"],  "Weights": [1], "Test": "pass"},
+        {"Name": "Right_Foot", "ConditionList": ["run_motor.Right_Foot"], "Weights": [1], "Test": "pass"},
+        {"Name": "Tongue",     "ConditionList": ["run_motor.Tongue"],     "Weights": [1], "Test": "pass"}
+      ]
+    },
+    {
+      "Level": "Subject",
+      "Name": "subject_wm",
+      "Filter": {"task": ["wm"]},
+      "Contrasts": [
+        {"Name": "twoback-zeroback_body",  "ConditionList": ["run_wm.twoback-zeroback_body"],  "Weights": [1], "Test": "pass"},
+        {"Name": "zeroback-twoback_body",  "ConditionList": ["run_wm.zeroback-twoback_body"],  "Weights": [1], "Test": "pass"},
+        {"Name": "twoback-zeroback_face",  "ConditionList": ["run_wm.twoback-zeroback_face"],  "Weights": [1], "Test": "pass"},
+        {"Name": "zeroback-twoback_face",  "ConditionList": ["run_wm.zeroback-twoback_face"],  "Weights": [1], "Test": "pass"},
+        {"Name": "twoback-zeroback_place", "ConditionList": ["run_wm.twoback-zeroback_place"], "Weights": [1], "Test": "pass"},
+        {"Name": "zeroback-twoback_place", "ConditionList": ["run_wm.zeroback-twoback_place"], "Weights": [1], "Test": "pass"},
+        {"Name": "twoback-zeroback_tools", "ConditionList": ["run_wm.twoback-zeroback_tools"], "Weights": [1], "Test": "pass"},
+        {"Name": "zeroback-twoback_tools", "ConditionList": ["run_wm.zeroback-twoback_tools"], "Weights": [1], "Test": "pass"},
+        {"Name": "zeroback_body",          "ConditionList": ["run_wm.zeroback_body"],          "Weights": [1], "Test": "pass"},
+        {"Name": "zeroback_face",          "ConditionList": ["run_wm.zeroback_face"],          "Weights": [1], "Test": "pass"},
+        {"Name": "zeroback_place",         "ConditionList": ["run_wm.zeroback_place"],         "Weights": [1], "Test": "pass"},
+        {"Name": "zeroback_tools",         "ConditionList": ["run_wm.zeroback_tools"],         "Weights": [1], "Test": "pass"},
+        {"Name": "twoback_body",           "ConditionList": ["run_wm.twoback_body"],           "Weights": [1], "Test": "pass"},
+        {"Name": "twoback_face",           "ConditionList": ["run_wm.twoback_face"],           "Weights": [1], "Test": "pass"},
+        {"Name": "twoback_place",          "ConditionList": ["run_wm.twoback_place"],          "Weights": [1], "Test": "pass"},
+        {"Name": "twoback_tools",          "ConditionList": ["run_wm.twoback_tools"],          "Weights": [1], "Test": "pass"}
+      ]
+    }
+  ],
+  "Edges": [
+    {"Source": "run_gambling",   "Destination": "subject_gambling"},
+    {"Source": "run_social",     "Destination": "subject_social"},
+    {"Source": "run_relational", "Destination": "subject_relational"},
+    {"Source": "run_language",   "Destination": "subject_language"},
+    {"Source": "run_emotion",    "Destination": "subject_emotion"},
+    {"Source": "run_motor",      "Destination": "subject_motor"},
+    {"Source": "run_wm",         "Destination": "subject_wm"}
+  ],
+  "Extensions": {
+    "_comment": "Non-standard fields specific to this pipeline. Transformations support Replace (remap values) and Drop (remove rows by value) instructions.",
+    "FROIContrasts": {
+      "gambling":   ["reward-punishment"],
+      "social":     ["mental-random"],
+      "relational": ["relational-control"],
+      "language":   ["story-math"],
+      "emotion":    ["Face-Shape"],
+      "motor":      ["LH-RH"],
+      "wm":         ["twoback-zeroback_face"]
+    },
+    "FilePatterns": {
+      "bold":      "*_space-MNI152NLin2009cAsym_desc-preproc_bold.nii.gz",
+      "mask":      "*_space-MNI152NLin2009cAsym_desc-brain_mask.nii.gz",
+      "confounds": "*_desc-confounds_timeseries.tsv"
+    },
+    "HasRunDimension": true
+  }
+}

@@ -56,12 +56,37 @@ def _configure_ria_ssh(c, subds_path, remote_name, ssh_url):
     )
 
 
-def _cneuromod_paths(c):
+def _dataset_names(c, dataset):
+    """Return the list of dataset names to process."""
+    if dataset:
+        return [dataset]
+    return list(c.config.get("datasets", {}).keys())
+
+
+def _dataset_config(c, dataset_name):
+    """Return (model_spec, subjects_str, task_names) for a dataset.
+
+    task_names comes from the model's Input.task list; invoke.yaml may override
+    it with a task_names key (comma-separated) to restrict or reorder tasks.
+    """
+    from analysis.model_spec import ModelSpec
+
+    ds = c.config.get("datasets", {}).get(dataset_name, {})
+    model_path = ds.get("model")
+    if not model_path:
+        raise ValueError(f"No model path configured for dataset '{dataset_name}'")
+    model_spec = ModelSpec(model_path)
+    subjects_str = ds.get("subjects", "")
+    task_names_str = ds.get("task_names", "")
+    task_names = [t.strip() for t in task_names_str.split(",")] if task_names_str else model_spec.tasks()
+    return model_spec, subjects_str, task_names
+
+
+def _cneuromod_paths(c, dataset_name):
     source_dir = Path(c.config.get("source_data_dir"))
-    dataset = c.config.get("cneuromod_dataset")
     repo = source_dir / "cneuromod.all"
-    bids_dir = repo / dataset / "bids"
-    fmriprep_dir = repo / dataset / "fmriprep"
+    bids_dir = repo / dataset_name / "bids"
+    fmriprep_dir = repo / dataset_name / "fmriprep"
     return repo, bids_dir, fmriprep_dir
 
 
@@ -70,7 +95,7 @@ def _cneuromod_paths(c):
 # ---------------------------------------------------------------------------
 
 @task
-def fetch(c, subjects=None, tasks=None, smoke=False):
+def fetch(c, subjects=None, tasks=None, smoke=False, dataset=None):
     """Download Fedorenko atlas and get CNeuroMod fMRI data via DataLad."""
     from airoh.utils import download_data
 
@@ -79,7 +104,8 @@ def fetch(c, subjects=None, tasks=None, smoke=False):
     download_data(c, "fedorenko_atlas_txt")
 
     # ---- DataLad superdataset ----
-    repo, bids_dir, fmriprep_dir = _cneuromod_paths(c)
+    source_dir = Path(c.config.get("source_data_dir"))
+    repo = source_dir / "cneuromod.all"
 
     if not repo.exists():
         print(f"Cloning cneuromod.all → {repo}  (SSH access to GitHub required)")
@@ -94,56 +120,69 @@ def fetch(c, subjects=None, tasks=None, smoke=False):
         print("[WARN] Could not clone cneuromod.all — skipping datalad get")
         return
 
-    dataset = c.config.get("cneuromod_dataset")
-
-    # Install subdatasets (metadata only, no data yet)
-    for subds in [f"{dataset}/bids", f"{dataset}/fmriprep"]:
-        c.run(f"datalad -C {repo} get -n {subds}", warn=True)
-
-    # Configure RIA SSH remotes (idempotent)
     ssh_url = c.config.get("ria_sequoia_ssh_url", "")
-    if ssh_url:
-        for subds_path in [bids_dir, fmriprep_dir]:
-            _configure_ria_ssh(c, subds_path, "ria-sequoia-storage", ssh_url)
 
-    # Get files for each subject / task
-    all_subjects = _parse_list(subjects, c.config.get("subjects"))
-    all_tasks = _parse_list(tasks, c.config.get("task_names"))
+    for ds_name in _dataset_names(c, dataset):
+        _, bids_dir, fmriprep_dir = _cneuromod_paths(c, ds_name)
+        model_spec, subjects_str, default_tasks = _dataset_config(c, ds_name)
 
-    if smoke:
-        all_subjects = all_subjects[:1]
+        # Install subdatasets (metadata only, no data yet)
+        for subds in [f"{ds_name}/bids", f"{ds_name}/fmriprep"]:
+            c.run(f"datalad -C {repo} get -n {subds}", warn=True)
 
-    ses_pattern = "ses-001" if smoke else "ses-*"
+        # Configure RIA SSH remotes (idempotent)
+        if ssh_url:
+            for subds_path in [bids_dir, fmriprep_dir]:
+                _configure_ria_ssh(c, subds_path, "ria-sequoia-storage", ssh_url)
 
-    for subj in all_subjects:
-        for task_name in all_tasks:
-            print(f"  git annex get: {subj} / {ses_pattern} / {task_name}")
-            func = f"{subj}/{ses_pattern}/func"
+        all_subjects = _parse_list(subjects, subjects_str)
+        all_tasks = [t.strip() for t in tasks.split(",")] if tasks else default_tasks
 
-            events = list(bids_dir.glob(f"{func}/*task-{task_name}*_events.tsv"))
-            fmriprep_files = (
-                list(fmriprep_dir.glob(
-                    f"{func}/*task-{task_name}*_part-mag_space-MNI152NLin2009cAsym_desc-preproc_bold.nii.gz"
-                ))
-                + list(fmriprep_dir.glob(
-                    f"{func}/*task-{task_name}*_part-mag_space-MNI152NLin2009cAsym_desc-brain_mask.nii.gz"
-                ))
-                + list(fmriprep_dir.glob(
-                    f"{func}/*task-{task_name}*_part-mag_desc-confounds_timeseries.tsv"
-                ))
-            )
+        if smoke:
+            all_subjects = all_subjects[:1]
 
-            if not events and not fmriprep_files:
-                print(f"  [SKIP] No files found for {subj}/{ses_pattern}/{task_name}")
-                continue
+        patterns = model_spec.file_patterns()
+        bold_pat = patterns.get("bold", "*_space-MNI152NLin2009cAsym_desc-preproc_bold.nii.gz")
+        mask_pat = patterns.get("mask", "*_space-MNI152NLin2009cAsym_desc-brain_mask.nii.gz")
+        conf_pat = patterns.get("confounds", "*_desc-confounds_timeseries.tsv")
 
-            if events:
-                rel = " ".join(str(f.relative_to(bids_dir)) for f in events)
-                c.run(f"git -C {bids_dir} annex get {rel}", warn=True)
+        for subj in all_subjects:
+            for task_name in all_tasks:
+                func = f"{subj}/ses-*/func"
 
-            if fmriprep_files:
-                rel = " ".join(str(f.relative_to(fmriprep_dir)) for f in fmriprep_files)
-                c.run(f"git -C {fmriprep_dir} annex get {rel}", warn=True)
+                events = sorted(bids_dir.glob(f"{func}/*task-{task_name}*_events.tsv"))
+                fmriprep_files = sorted(
+                    list(fmriprep_dir.glob(f"{func}/*task-{task_name}{bold_pat}"))
+                    + list(fmriprep_dir.glob(f"{func}/*task-{task_name}{mask_pat}"))
+                    + list(fmriprep_dir.glob(f"{func}/*task-{task_name}{conf_pat}"))
+                )
+
+                if not events and not fmriprep_files:
+                    print(f"  [SKIP] No files found for {subj}/{task_name}")
+                    continue
+
+                if smoke:
+                    # Restrict to the first session that actually has data for this task
+                    first_ses = next(
+                        (p for p in (events or fmriprep_files)[0].parts if p.startswith("ses-")),
+                        None,
+                    )
+                    if first_ses:
+                        events = [f for f in events if first_ses in f.parts]
+                        fmriprep_files = [f for f in fmriprep_files if first_ses in f.parts]
+                    ses_label = first_ses or "ses-*"
+                else:
+                    ses_label = "ses-*"
+
+                print(f"  [{ds_name}] git annex get: {subj} / {ses_label} / {task_name}")
+
+                if events:
+                    rel = " ".join(str(f.relative_to(bids_dir)) for f in events)
+                    c.run(f"git -C {bids_dir} annex get {rel}", warn=True)
+
+                if fmriprep_files:
+                    rel = " ".join(str(f.relative_to(fmriprep_dir)) for f in fmriprep_files)
+                    c.run(f"git -C {fmriprep_dir} annex get {rel}", warn=True)
 
 
 # ---------------------------------------------------------------------------
@@ -151,64 +190,81 @@ def fetch(c, subjects=None, tasks=None, smoke=False):
 # ---------------------------------------------------------------------------
 
 @task
-def run_glm(c, subjects=None, tasks=None, smoke=False):
+def run_glm(c, subjects=None, tasks=None, smoke=False, dataset=None):
     """Fit session-level first-level GLM for each subject; skip if outputs exist."""
-    from analysis.glm import (
-        find_sessions_for_subject, run_session_glm, CONTRASTS_TO_AVERAGE
-    )
+    from analysis.glm import find_sessions_for_subject, run_session_glm
     import nibabel as nib
 
-    _, bids_dir, fmriprep_dir = _cneuromod_paths(c)
     output_dir = Path(c.config.get("output_data_dir"))
     tr = float(c.config.get("tr"))
     smoothing_fwhm = float(c.config.get("smoothing_fwhm"))
     n_compcor = int(c.config.get("n_compcor"))
 
-    all_subjects = _parse_list(subjects, c.config.get("subjects"))
-    all_tasks = _parse_list(tasks, c.config.get("task_names"))
+    for ds_name in _dataset_names(c, dataset):
+        _, bids_dir, fmriprep_dir = _cneuromod_paths(c, ds_name)
+        model_spec, subjects_str, default_tasks = _dataset_config(c, ds_name)
+        ds_output = output_dir / ds_name
 
-    if smoke:
-        all_subjects = all_subjects[:1]
+        all_subjects = _parse_list(subjects, subjects_str)
+        all_tasks = [t.strip() for t in tasks.split(",")] if tasks else default_tasks
 
-    for subj in all_subjects:
-        for task_name in all_tasks:
-            sessions = find_sessions_for_subject(subj, task_name, fmriprep_dir, bids_dir)
-            if not sessions:
-                print(f"  [SKIP] No sessions found for {subj}/{task_name}")
-                continue
+        if smoke:
+            all_subjects = all_subjects[:1]
 
-            ses_list = sorted(sessions.items())
-            if smoke:
-                ses_list = ses_list[:1]
-
-            for ses_id, files in ses_list:
-                session_dir = output_dir / subj / ses_id / task_name
-                sentinel = session_dir / f"{subj}_{ses_id}_task-{task_name}_contrast-int-degr_stat-z.nii.gz"
-                if sentinel.exists():
-                    print(f"  [SKIP] {subj}/{ses_id}/{task_name} (outputs exist)")
+        for subj in all_subjects:
+            for task_name in all_tasks:
+                sessions = find_sessions_for_subject(
+                    subj, task_name, fmriprep_dir, bids_dir, model_spec
+                )
+                if not sessions:
+                    print(f"  [SKIP] No sessions found for {subj}/{task_name}")
                     continue
 
-                session_dir.mkdir(parents=True, exist_ok=True)
-                try:
-                    results = run_session_glm(
-                        subj, ses_id, task_name,
-                        bold_file=str(files["bold"]),
-                        events_file=str(files["events"]),
-                        mask_file=str(files["mask"]) if files["mask"] else None,
-                        tr=tr,
-                        smoothing_fwhm=smoothing_fwhm,
-                        n_compcor=n_compcor,
+                ses_list = sorted(sessions.items())
+                if smoke:
+                    ses_list = ses_list[:1]
+
+                for ses_id, ses_data in ses_list:
+                    session_dir = ds_output / subj / ses_id / task_name
+                    first_contrast = model_spec.subject_contrasts(task_name)[0]
+                    sentinel = (
+                        session_dir /
+                        f"{subj}_{ses_id}_task-{task_name}_contrast-{first_contrast}_stat-z.nii.gz"
                     )
-                    for contrast_name, z_map in results.items():
-                        out_path = (
-                            session_dir /
-                            f"{subj}_{ses_id}_task-{task_name}_contrast-{contrast_name}_stat-z.nii.gz"
+                    if sentinel.exists():
+                        print(f"  [SKIP] {subj}/{ses_id}/{task_name} (outputs exist)")
+                        continue
+
+                    session_dir.mkdir(parents=True, exist_ok=True)
+                    runs = ses_data["runs"]
+                    if smoke:
+                        runs = runs[:1]
+
+                    bold_files = [str(r["bold"]) for r in runs]
+                    events_files = [str(r["events"]) for r in runs]
+                    mask_file = str(ses_data["mask"]) if ses_data["mask"] else None
+
+                    try:
+                        results = run_session_glm(
+                            subj, ses_id, task_name,
+                            bold_files=bold_files,
+                            events_files=events_files,
+                            mask_file=mask_file,
+                            model_spec=model_spec,
+                            tr=tr,
+                            smoothing_fwhm=smoothing_fwhm,
+                            n_compcor=n_compcor,
                         )
-                        nib.save(z_map, str(out_path))
-                        print(f"    Saved: {out_path.name}")
-                except Exception as e:
-                    print(f"  [ERROR] {subj}/{ses_id}/{task_name}: {e}")
-                    import traceback; traceback.print_exc()
+                        for contrast_name, z_map in results.items():
+                            out_path = (
+                                session_dir /
+                                f"{subj}_{ses_id}_task-{task_name}_contrast-{contrast_name}_stat-z.nii.gz"
+                            )
+                            nib.save(z_map, str(out_path))
+                            print(f"    Saved: {out_path.name}")
+                    except Exception as e:
+                        print(f"  [ERROR] {subj}/{ses_id}/{task_name}: {e}")
+                        import traceback; traceback.print_exc()
 
 
 # ---------------------------------------------------------------------------
@@ -216,28 +272,35 @@ def run_glm(c, subjects=None, tasks=None, smoke=False):
 # ---------------------------------------------------------------------------
 
 @task
-def run_subject(c, subjects=None, tasks=None, smoke=False):
+def run_subject(c, subjects=None, tasks=None, smoke=False, dataset=None):
     """Average session z-maps into subject-level fixed-effects maps; skip if outputs exist."""
-    from analysis.glm import run_subject_level_fixed_effects, CONTRASTS_TO_AVERAGE
+    from analysis.glm import run_subject_level_fixed_effects
 
     output_dir = Path(c.config.get("output_data_dir"))
-    all_subjects = _parse_list(subjects, c.config.get("subjects"))
-    all_tasks = _parse_list(tasks, c.config.get("task_names"))
 
-    if smoke:
-        all_subjects = all_subjects[:1]
+    for ds_name in _dataset_names(c, dataset):
+        model_spec, subjects_str, default_tasks = _dataset_config(c, ds_name)
+        ds_output = output_dir / ds_name
 
-    for subj in all_subjects:
-        for task_name in all_tasks:
-            for contrast in CONTRASTS_TO_AVERAGE.get(task_name, []):
-                out_path = (
-                    output_dir / subj / "subject_level" / task_name /
-                    f"{subj}_task-{task_name}_contrast-{contrast}_stat-z.nii.gz"
-                )
-                if out_path.exists():
-                    print(f"  [SKIP] {subj}/{task_name}/{contrast} (output exists)")
-                    continue
-                run_subject_level_fixed_effects(subj, task_name, contrast, output_dir, output_dir)
+        all_subjects = _parse_list(subjects, subjects_str)
+        all_tasks = [t.strip() for t in tasks.split(",")] if tasks else default_tasks
+
+        if smoke:
+            all_subjects = all_subjects[:1]
+
+        for subj in all_subjects:
+            for task_name in all_tasks:
+                for contrast in model_spec.subject_contrasts(task_name):
+                    out_path = (
+                        ds_output / subj / "subject_level" / task_name /
+                        f"{subj}_task-{task_name}_contrast-{contrast}_stat-z.nii.gz"
+                    )
+                    if out_path.exists():
+                        print(f"  [SKIP] {subj}/{task_name}/{contrast} (output exists)")
+                        continue
+                    run_subject_level_fixed_effects(
+                        subj, task_name, contrast, ds_output, ds_output
+                    )
 
 
 # ---------------------------------------------------------------------------
@@ -245,7 +308,7 @@ def run_subject(c, subjects=None, tasks=None, smoke=False):
 # ---------------------------------------------------------------------------
 
 @task
-def run_froi(c, subjects=None, tasks=None, smoke=False):
+def run_froi(c, subjects=None, tasks=None, smoke=False, dataset=None):
     """Extract Fedorenko language fROI masks from subject-level z-maps; skip if outputs exist."""
     from analysis.froi import load_fed_labels, extract_subject_frois, extract_session_frois
 
@@ -261,58 +324,59 @@ def run_froi(c, subjects=None, tasks=None, smoke=False):
         return
 
     fed_labels = load_fed_labels(atlas_txt)
-    froi_dir = output_dir / "fedorenko_frois"
-    froi_dir.mkdir(parents=True, exist_ok=True)
 
-    all_subjects = _parse_list(subjects, c.config.get("subjects"))
-    all_tasks = _parse_list(tasks, c.config.get("task_names"))
+    for ds_name in _dataset_names(c, dataset):
+        model_spec, subjects_str, default_tasks = _dataset_config(c, ds_name)
+        ds_output = output_dir / ds_name
+        froi_dir = ds_output / "fedorenko_frois"
+        froi_dir.mkdir(parents=True, exist_ok=True)
 
-    if smoke:
-        all_subjects = all_subjects[:1]
+        all_subjects = _parse_list(subjects, subjects_str)
+        all_tasks = [t.strip() for t in tasks.split(",")] if tasks else default_tasks
 
-    FROI_CONTRASTS = {
-        "aliceFr":   ["int-degr"],
-        "aliceEn":   ["int-degr"],
-        "listening": ["int-degr"],
-        "reading":   ["word-nonword"],
-    }
+        if smoke:
+            all_subjects = all_subjects[:1]
 
-    for subj in all_subjects:
-        for task_name in all_tasks:
-            for contrast in FROI_CONTRASTS.get(task_name, []):
+        for subj in all_subjects:
+            for task_name in all_tasks:
+                for contrast in model_spec.froi_contrasts(task_name):
 
-                # --- Session-level fROIs ---
-                ses_dirs = sorted((output_dir / subj).glob("ses-*"))
-                if smoke:
-                    ses_dirs = ses_dirs[:1]
+                    # --- Session-level fROIs ---
+                    ses_dirs = sorted((ds_output / subj).glob("ses-*"))
+                    if smoke:
+                        ses_dirs = ses_dirs[:1]
 
-                for ses_dir in ses_dirs:
-                    ses_id = ses_dir.name
-                    sentinel = froi_dir / f"{subj}_{ses_id}_task-{task_name}_contrast-{contrast}_parcel-*_top.nii.gz"
-                    if list(froi_dir.glob(f"{subj}_{ses_id}_task-{task_name}_contrast-{contrast}_parcel-*_top.nii.gz")):
-                        print(f"  [SKIP] Session fROIs for {subj}/{ses_id}/{task_name}/{contrast} (outputs exist)")
+                    for ses_dir in ses_dirs:
+                        ses_id = ses_dir.name
+                        if list(froi_dir.glob(
+                            f"{subj}_{ses_id}_task-{task_name}_contrast-{contrast}_parcel-*_top.nii.gz"
+                        )):
+                            print(f"  [SKIP] Session fROIs for {subj}/{ses_id}/{task_name}/{contrast} (outputs exist)")
+                            continue
+                        extract_session_frois(
+                            subj, ses_id, task_name, contrast,
+                            glm_dir=ds_output,
+                            out_dir=froi_dir,
+                            atlas_nii=atlas_nii,
+                            fed_labels=fed_labels,
+                            top_percent=top_percent,
+                        )
+
+                    # --- Subject-level fROIs ---
+                    if list(froi_dir.glob(
+                        f"{subj}_task-{task_name}_contrast-{contrast}_parcel-*_top_mean.nii.gz"
+                    )):
+                        print(f"  [SKIP] Subject fROIs for {subj}/{task_name}/{contrast} (outputs exist)")
                         continue
-                    extract_session_frois(
-                        subj, ses_id, task_name, contrast,
-                        glm_dir=output_dir,
+                    extract_subject_frois(
+                        subj, task_name, contrast,
+                        glm_dir=ds_output,
                         out_dir=froi_dir,
                         atlas_nii=atlas_nii,
                         fed_labels=fed_labels,
                         top_percent=top_percent,
                     )
 
-                # --- Subject-level fROIs ---
-                if list(froi_dir.glob(f"{subj}_task-{task_name}_contrast-{contrast}_parcel-*_top_mean.nii.gz")):
-                    print(f"  [SKIP] Subject fROIs for {subj}/{task_name}/{contrast} (outputs exist)")
-                    continue
-                extract_subject_frois(
-                    subj, task_name, contrast,
-                    glm_dir=output_dir,
-                    out_dir=froi_dir,
-                    atlas_nii=atlas_nii,
-                    fed_labels=fed_labels,
-                    top_percent=top_percent,
-                )
 
 # ---------------------------------------------------------------------------
 # run-notebooks
@@ -334,20 +398,24 @@ def run_notebooks(c):
 # ---------------------------------------------------------------------------
 
 @task
-def run(c, smoke=False):
+def run(c, smoke=False, dataset=None):
     """Full pipeline: fetch → run-glm → run-subject → run-froi → run-notebooks."""
-    fetch(c, smoke=smoke)
-    run_glm(c, smoke=smoke)
-    run_subject(c, smoke=smoke)
-    run_froi(c, smoke=smoke)
+    fetch(c, smoke=smoke, dataset=dataset)
+    run_glm(c, smoke=smoke, dataset=dataset)
+    run_subject(c, smoke=smoke, dataset=dataset)
+    run_froi(c, smoke=smoke, dataset=dataset)
     run_notebooks(c)
     print("Pipeline complete.")
 
 
 @task
-def run_smoke(c):
-    """Smoke test: minimal end-to-end pass (first subject only)."""
-    run(c, smoke=True)
+def run_smoke(c, dataset=None):
+    """Smoke test: minimal end-to-end pass (first subject only).
+
+    Pass --dataset to restrict to one dataset, e.g.:
+      invoke run-smoke --dataset hcptrt
+    """
+    run(c, smoke=True, dataset=dataset)
 
 
 # ---------------------------------------------------------------------------
@@ -358,21 +426,24 @@ def run_smoke(c):
 def clean_glm(c):
     """Remove session-level GLM z-maps from output_data/."""
     from airoh.utils import clean_folder
-    clean_folder(c, "output_data_dir", "sub-*/ses-*/*/*.nii.gz")
+    for ds_name in _dataset_names(c, None):
+        clean_folder(c, "output_data_dir", f"{ds_name}/sub-*/ses-*/*/*.nii.gz")
 
 
 @task
 def clean_subject(c):
     """Remove subject-level fixed-effects maps from output_data/."""
     from airoh.utils import clean_folder
-    clean_folder(c, "output_data_dir", "sub-*/subject_level/*/*.nii.gz")
+    for ds_name in _dataset_names(c, None):
+        clean_folder(c, "output_data_dir", f"{ds_name}/sub-*/subject_level/*/*.nii.gz")
 
 
 @task
 def clean_froi(c):
     """Remove Fedorenko fROI masks from output_data/."""
     from airoh.utils import clean_folder
-    clean_folder(c, "output_data_dir", "fedorenko_frois/*.nii.gz")
+    for ds_name in _dataset_names(c, None):
+        clean_folder(c, "output_data_dir", f"{ds_name}/fedorenko_frois/*.nii.gz")
 
 
 @task(pre=[clean_glm, clean_subject, clean_froi])
@@ -386,6 +457,7 @@ def clean_source(c):
     """Remove downloaded source data (Fedorenko atlas + DataLad files)."""
     from airoh.utils import clean_folder
     clean_folder(c, "source_data_dir", "fedorenko/")
-    repo, _, _ = _cneuromod_paths(c)
+    source_dir = Path(c.config.get("source_data_dir"))
+    repo = source_dir / "cneuromod.all"
     if repo.exists():
         print(f"[NOTE] DataLad repo at {repo} was not removed — delete manually if needed.")

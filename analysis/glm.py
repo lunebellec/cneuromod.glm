@@ -1,3 +1,4 @@
+import re
 import warnings
 warnings.filterwarnings("ignore")
 
@@ -7,59 +8,6 @@ import nibabel as nib
 from pathlib import Path
 from nilearn.glm.first_level import FirstLevelModel
 from nilearn.interfaces.fmriprep import load_confounds
-
-
-FUNC_PATTERN = "*_part-mag_space-MNI152NLin2009cAsym_desc-preproc_bold.nii.gz"
-MASK_PATTERN = "*_part-mag_space-MNI152NLin2009cAsym_desc-brain_mask.nii.gz"
-
-EVENTS_OF_INTEREST = {
-    "listening": ["int", "degr"],
-    "aliceFr": ["int", "degr", "tamil"],
-    "aliceEn": ["int", "degr", "tamil"],
-    "reading": ["word", "nonword"],
-}
-
-TASK_CONTRASTS = {
-    "listening": {
-        "singles": ["int", "degr"],
-        "pairs": [
-            ("int", "degr", "int-degr"),
-            ("degr", "int", "degr-int"),
-        ],
-    },
-    "aliceFr": {
-        "singles": ["int", "degr", "tamil"],
-        "pairs": [
-            ("int", "degr", "int-degr"),
-            ("degr", "int", "degr-int"),
-            ("tamil", "degr", "tamil-degr"),
-            ("tamil", "int", "tamil-int"),
-        ],
-    },
-    "aliceEn": {
-        "singles": ["int", "degr"],
-        "pairs": [
-            ("int", "degr", "int-degr"),
-            ("degr", "int", "degr-int"),
-            ("tamil", "degr", "tamil-degr"),
-            ("tamil", "int", "tamil-int"),
-        ],
-    },
-    "reading": {
-        "singles": ["word", "nonword"],
-        "pairs": [
-            ("word", "nonword", "word-nonword"),
-            ("nonword", "word", "nonword-word"),
-        ],
-    },
-}
-
-CONTRASTS_TO_AVERAGE = {
-    "listening": ["int-degr", "degr-int", "int", "degr"],
-    "aliceFr":   ["int-degr", "degr-int", "int", "degr"],
-    "aliceEn":   ["int-degr", "degr-int", "int", "degr"],
-    "reading":   ["word-nonword", "nonword-word", "word", "nonword"],
-}
 
 
 def load_confounds_extended(bold_file, n_compcor=6):
@@ -73,59 +21,73 @@ def load_confounds_extended(bold_file, n_compcor=6):
     return confounds
 
 
-def _convert_listening_alice_events(event_file):
+def prepare_events(event_file, transformations):
+    """Load events TSV and apply Replace/Drop instructions from a BIDS SM node."""
     df = pd.read_csv(event_file, sep="\t")
     bids = df[["onset", "duration", "trial_type"]].copy()
     bids["onset"] = pd.to_numeric(bids["onset"], errors="coerce")
     bids["duration"] = pd.to_numeric(bids["duration"], errors="coerce")
-    bids = bids.dropna()
-    # Some events in the source data have invalid negative durations
+    bids = bids.dropna(subset=["onset", "duration"])
     bids.loc[bids["duration"] <= 0, "duration"] = 1.0
-    return bids
+
+    for instr in transformations:
+        name = instr.get("Name")
+        if name == "Replace" and "trial_type" in instr.get("Input", []):
+            mapping = instr.get("Map", {})
+            bids["trial_type"] = bids["trial_type"].replace(mapping)
+        elif name == "Drop" and "trial_type" in instr.get("Input", []):
+            values = instr.get("Values", [])
+            bids = bids[~bids["trial_type"].isin(values)]
+
+    return bids.reset_index(drop=True)
 
 
-def _convert_reading_events(event_file):
-    df = pd.read_csv(event_file, sep="\t")
-    bids = df[["onset", "duration", "trial_type"]].copy()
-    bids["onset"] = pd.to_numeric(bids["onset"], errors="coerce")
-    bids["duration"] = pd.to_numeric(bids["duration"], errors="coerce")
-    bids = bids.dropna()
-    bids.loc[bids["duration"] <= 0, "duration"] = 1.0
-    # 'non-word' → 'nonword': hyphens are invalid in nilearn contrast expressions
-    bids["trial_type"] = bids["trial_type"].str.replace("-", "", regex=False)
-    return bids
+def build_contrasts(run_contrasts, design_matrices):
+    """Build nilearn contrast expressions from a BIDS SM Contrasts list.
 
-
-def prepare_events(event_file, task):
-    if task in ["listening", "aliceFr", "aliceEn"]:
-        return _convert_listening_alice_events(event_file)
-    elif task == "reading":
-        return _convert_reading_events(event_file)
-    raise ValueError(f"Unknown task: {task}")
-
-
-def build_contrasts_for_task(task, design_matrices):
-    if task not in TASK_CONTRASTS:
-        return {}
-    spec = TASK_CONTRASTS[task]
+    ConditionList entries use the 'trial_type.value' convention; this strips
+    the prefix to get the raw column name as it appears in the design matrix.
+    """
     all_cols = set()
     for dm in design_matrices:
         all_cols.update(dm.columns)
+
     contrasts = {}
-    for cond in spec.get("singles", []):
-        if cond in all_cols:
-            contrasts[cond] = cond
-    for cond1, cond2, name in spec.get("pairs", []):
-        if cond1 in all_cols and cond2 in all_cols:
-            contrasts[name] = f"{cond1} - {cond2}"
+    for spec in run_contrasts:
+        cond_list = [c.split(".", 1)[-1] for c in spec["ConditionList"]]
+        weights = spec["Weights"]
+        if not all(c in all_cols for c in cond_list):
+            continue
+        if len(cond_list) == 1:
+            contrasts[spec["Name"]] = cond_list[0]
+        else:
+            terms = [f"{w:+g}*{c}" if w != 1 else c for w, c in zip(weights, cond_list)]
+            # Build expression: w1*A + w2*B → "A - B" or "A + B" etc.
+            expr_parts = []
+            for w, c in zip(weights, cond_list):
+                if not expr_parts:
+                    expr_parts.append(c if w == 1 else f"-{c}" if w == -1 else f"{w}*{c}")
+                else:
+                    if w == 1:
+                        expr_parts.append(f"+ {c}")
+                    elif w == -1:
+                        expr_parts.append(f"- {c}")
+                    else:
+                        expr_parts.append(f"+ {w}*{c}" if w > 0 else f"- {abs(w)}*{c}")
+            contrasts[spec["Name"]] = " ".join(expr_parts)
     return contrasts
 
 
-def run_session_glm(subject, session, task, bold_file, events_file, mask_file,
-                    tr=1.49, smoothing_fwhm=5.0, n_compcor=6):
-    print(f"  GLM: {subject}/{session}/{task}")
-    events = prepare_events(events_file, task)
-    confounds = load_confounds_extended(bold_file, n_compcor=n_compcor)
+def run_session_glm(subject, session, task, bold_files, events_files, mask_file,
+                    model_spec, tr=1.49, smoothing_fwhm=5.0, n_compcor=6):
+    """Fit a first-level GLM for one subject/session/task.
+
+    bold_files and events_files are lists (one entry per run).
+    """
+    print(f"  GLM: {subject}/{session}/{task} ({len(bold_files)} run(s))")
+    transformations = model_spec.transformations(task)
+    events = [prepare_events(ef, transformations) for ef in events_files]
+    confounds = [load_confounds_extended(bf, n_compcor=n_compcor) for bf in bold_files]
 
     fmri_glm = FirstLevelModel(
         t_r=tr,
@@ -133,11 +95,12 @@ def run_session_glm(subject, session, task, bold_file, events_file, mask_file,
         drift_model=None,
         smoothing_fwhm=smoothing_fwhm,
     )
-    fmri_glm.fit(bold_file, events=events, confounds=confounds)
+    fmri_glm.fit(bold_files, events=events, confounds=confounds)
 
-    contrasts = build_contrasts_for_task(task, fmri_glm.design_matrices_)
+    run_contrasts = model_spec.run_contrasts(task)
+    contrast_map = build_contrasts(run_contrasts, fmri_glm.design_matrices_)
     results = {}
-    for name, expr in contrasts.items():
+    for name, expr in contrast_map.items():
         try:
             results[name] = fmri_glm.compute_contrast(expr, output_type="z_score")
         except Exception as e:
@@ -145,25 +108,64 @@ def run_session_glm(subject, session, task, bold_file, events_file, mask_file,
     return results
 
 
-def find_sessions_for_subject(subject, task, fmriprep_dir, bids_dir):
-    """Return {session_id: {bold, events, mask}} for all discoverable sessions."""
-    subject_root = Path(fmriprep_dir) / subject
-    source_root = Path(bids_dir) / subject
+def find_sessions_for_subject(subject, task, fmriprep_dir, bids_dir, model_spec):
+    """Return session data for all discoverable sessions of subject/task.
 
-    bold_files = sorted(subject_root.rglob(f"{subject}_ses-*_task-{task}{FUNC_PATTERN}"))
+    Returns:
+        {ses_id: {"runs": [{"bold": path, "events": path, "run_id": str}], "mask": path}}
+
+    For datasets without a run dimension (langlocalizer) each session has one
+    entry in "runs" and run_id is None.
+    """
+    patterns = model_spec.file_patterns()
+    bold_suffix = patterns.get("bold", "*_space-MNI152NLin2009cAsym_desc-preproc_bold.nii.gz")
+    mask_suffix = patterns.get("mask", "*_space-MNI152NLin2009cAsym_desc-brain_mask.nii.gz")
+
+    subj_fmriprep = Path(fmriprep_dir) / subject
+    subj_bids = Path(bids_dir) / subject
+
     sessions = {}
-    for bold_file in bold_files:
-        ses_id = next(p for p in bold_file.name.split("_") if p.startswith("ses-"))
-        events_files = list(source_root.rglob(f"{subject}_{ses_id}_task-{task}_events.tsv"))
-        if not events_files:
-            print(f"  [WARN] No events for {subject}/{ses_id}/{task} — skipping")
-            continue
-        mask_files = list(subject_root.rglob(f"{subject}_{ses_id}_task-{task}{MASK_PATTERN}"))
-        sessions[ses_id] = {
-            "bold": bold_file,
-            "events": events_files[0],
-            "mask": mask_files[0] if mask_files else None,
-        }
+
+    if model_spec.has_run_dimension():
+        # hcptrt-style: multiple runs per session
+        # Discover via events files (always in BIDS sourcedata)
+        bold_end = bold_suffix.split("*")[-1]
+        mask_end = mask_suffix.split("*")[-1]
+        for events_file in sorted(subj_bids.rglob(f"{subject}_ses-*_task-{task}_run-*_events.tsv")):
+            m = re.search(r"(ses-[^_]+).*?(run-[^_]+)", events_file.name)
+            if not m:
+                continue
+            ses_id, run_id = m.group(1), m.group(2)
+            func_dir = subj_fmriprep / ses_id / "func"
+            bold_files = list(func_dir.glob(f"*_task-{task}_{run_id}*{bold_end}"))
+            mask_files = list(func_dir.glob(f"*_task-{task}_{run_id}*{mask_end}"))
+            if not bold_files:
+                print(f"  [WARN] No bold for {subject}/{ses_id}/{task}/{run_id} — skipping run")
+                continue
+            if ses_id not in sessions:
+                sessions[ses_id] = {"runs": [], "mask": mask_files[0] if mask_files else None}
+            sessions[ses_id]["runs"].append({
+                "bold": bold_files[0],
+                "events": events_file,
+                "run_id": run_id,
+            })
+    else:
+        # langlocalizer-style: one run per session (no run-* in filenames)
+        for bold_file in sorted(subj_fmriprep.rglob(f"{subject}_ses-*_task-{task}{bold_suffix}")):
+            m = re.search(r"(ses-[^_]+)", bold_file.name)
+            if not m:
+                continue
+            ses_id = m.group(1)
+            events_files = list(subj_bids.rglob(f"{subject}_{ses_id}_task-{task}_events.tsv"))
+            if not events_files:
+                print(f"  [WARN] No events for {subject}/{ses_id}/{task} — skipping")
+                continue
+            mask_files = list(subj_fmriprep.rglob(f"{subject}_{ses_id}_task-{task}{mask_suffix}"))
+            sessions[ses_id] = {
+                "runs": [{"bold": bold_file, "events": events_files[0], "run_id": None}],
+                "mask": mask_files[0] if mask_files else None,
+            }
+
     return sessions
 
 

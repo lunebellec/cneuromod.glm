@@ -8,8 +8,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 The pipeline: `fetch` (DataLad + Fedorenko atlas) → `run-glm` (session-level first-level GLM via nilearn) → `run-subject` (fixed-effects averaging across sessions) → `run-froi` (top-voxel Fedorenko language fROI extraction) → `run-notebooks` (visualization).
 
-Source data lives under `source_data/cneuromod.all/langlocalizer/{bids,fmriprep}/`.
-The primary chunk concept is **subject** (e.g. `sub-01`); tasks and sessions are iterated within each subject.
+Two datasets are supported: `langlocalizer` (aliceEn, aliceFr, listening, reading) and `hcptrt` (motor, wm, gambling, social, language, relational, emotion).  
+Source data lives under `source_data/cneuromod.all/{dataset}/{bids,fmriprep}/`.  
+Outputs are dataset-scoped: `output_data/{dataset}/sub-{sub}/…`.  
+The primary chunk concept is **subject** (e.g. `sub-01`); datasets, tasks, and sessions are iterated within each subject.
 
 Built on the [`invoke`](https://www.pyinvoke.org/) task runner. The `airoh` pip package provides reusable invoke tasks; this repo customizes them via `tasks.py` and `invoke.yaml`.
 
@@ -56,8 +58,10 @@ invoke --list             # Show all available tasks
 
 **Execution flow:** `invoke run` triggers the project's analysis pipeline via `pre=` dependencies declared in `tasks.py`. The three permanent tasks — `fetch`, `run`, `clean` — are always present; intermediate steps are project-specific.
 
-- `invoke.yaml` — all path and data config (`output_data_dir`, `source_data_dir`, `notebooks_dir`, `files:` for downloads)
+- `invoke.yaml` — all path and data config (`output_data_dir`, `source_data_dir`, `notebooks_dir`, `files:` for downloads, `datasets:` dict)
 - `tasks.py` — project-specific invoke tasks; imports reusable tasks from `airoh.utils`
+- `models/{dataset}.json` — BIDS Stats Models 1.0.0 descriptors; define per-task contrasts, event transformations, file patterns, and fROI contrasts. **Edit these instead of `analysis/glm.py` when adding or changing contrasts.**
+- `analysis/model_spec.py` — `ModelSpec` class that parses the BIDS SM JSON; used by all analysis tasks
 - `analysis/` — pure Python analysis logic, called by tasks in `tasks.py`
 - `notebooks/` — Jupyter notebooks executed by `run_notebooks` via `airoh.utils.run_notebooks`; notebooks receive `OUTPUT_DATA_DIR` and `SOURCE_DATA_DIR` as environment variables
 - `source_data/CONTENT.md` and `output_data/CONTENT.md` — authoritative docs for what each data folder contains; update these when data assets change, do not duplicate their content elsewhere
