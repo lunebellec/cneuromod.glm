@@ -247,7 +247,7 @@ def run_subject(c, subjects=None, tasks=None, smoke=False):
 @task
 def run_froi(c, subjects=None, tasks=None, smoke=False):
     """Extract Fedorenko language fROI masks from subject-level z-maps; skip if outputs exist."""
-    from analysis.froi import load_fed_labels, extract_subject_frois
+    from analysis.froi import load_fed_labels, extract_subject_frois, extract_session_frois
 
     source_dir = Path(c.config.get("source_data_dir"))
     output_dir = Path(c.config.get("output_data_dir"))
@@ -280,9 +280,30 @@ def run_froi(c, subjects=None, tasks=None, smoke=False):
     for subj in all_subjects:
         for task_name in all_tasks:
             for contrast in FROI_CONTRASTS.get(task_name, []):
-                sentinel = froi_dir / f"{subj}_task-{task_name}_contrast-{contrast}_parcel-*_top_mean.nii.gz"
+
+                # --- Session-level fROIs ---
+                ses_dirs = sorted((output_dir / subj).glob("ses-*"))
+                if smoke:
+                    ses_dirs = ses_dirs[:1]
+
+                for ses_dir in ses_dirs:
+                    ses_id = ses_dir.name
+                    sentinel = froi_dir / f"{subj}_{ses_id}_task-{task_name}_contrast-{contrast}_parcel-*_top.nii.gz"
+                    if list(froi_dir.glob(f"{subj}_{ses_id}_task-{task_name}_contrast-{contrast}_parcel-*_top.nii.gz")):
+                        print(f"  [SKIP] Session fROIs for {subj}/{ses_id}/{task_name}/{contrast} (outputs exist)")
+                        continue
+                    extract_session_frois(
+                        subj, ses_id, task_name, contrast,
+                        glm_dir=output_dir,
+                        out_dir=froi_dir,
+                        atlas_nii=atlas_nii,
+                        fed_labels=fed_labels,
+                        top_percent=top_percent,
+                    )
+
+                # --- Subject-level fROIs ---
                 if list(froi_dir.glob(f"{subj}_task-{task_name}_contrast-{contrast}_parcel-*_top_mean.nii.gz")):
-                    print(f"  [SKIP] fROIs for {subj}/{task_name}/{contrast} (outputs exist)")
+                    print(f"  [SKIP] Subject fROIs for {subj}/{task_name}/{contrast} (outputs exist)")
                     continue
                 extract_subject_frois(
                     subj, task_name, contrast,
@@ -292,7 +313,6 @@ def run_froi(c, subjects=None, tasks=None, smoke=False):
                     fed_labels=fed_labels,
                     top_percent=top_percent,
                 )
-
 
 # ---------------------------------------------------------------------------
 # run-notebooks
