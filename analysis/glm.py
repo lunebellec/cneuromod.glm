@@ -25,6 +25,16 @@ def prepare_events(event_file, transformations):
     """Load events TSV and apply Replace/Drop instructions from a BIDS SM node."""
     df = pd.read_csv(event_file, sep="\t")
     bids = df[["onset", "duration", "trial_type"]].copy()
+    
+    # wm-style events: trial_type and stim_type are separate columns that need
+    # to be concatenated before Replace transformations can match (e.g. "2-Back"+"Body" → "2-BackBody")
+    if "stim_type" in df.columns:
+        stim = df["stim_type"].astype(str).str.strip().replace("nan", "")
+        has_stim = stim != ""
+        bids.loc[has_stim, "trial_type"] = (
+            bids.loc[has_stim, "trial_type"].astype(str) + stim[has_stim]
+        )
+    
     bids["onset"] = pd.to_numeric(bids["onset"], errors="coerce")
     bids["duration"] = pd.to_numeric(bids["duration"], errors="coerce")
     bids = bids.dropna(subset=["onset", "duration"])
