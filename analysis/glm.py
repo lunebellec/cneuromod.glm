@@ -140,6 +140,14 @@ def find_sessions_for_subject(subject, task, fmriprep_dir, bids_dir, model_spec)
             bold_files = list(func_dir.glob(f"*_task-{task}_{run_id}*{bold_end}"))
             mask_files = list(func_dir.glob(f"*_task-{task}_{run_id}*{mask_end}"))
             if not bold_files:
+                # bids events may use run-01 while fmriprep uses run-1 — try stripped version
+                run_id_short = re.sub(r"run-0*(\d+)", r"run-\1", run_id)
+                if run_id_short != run_id:
+                    bold_files = list(func_dir.glob(f"*_task-{task}_{run_id_short}*{bold_end}"))
+                    mask_files = list(func_dir.glob(f"*_task-{task}_{run_id_short}*{mask_end}"))
+                    if bold_files:
+                        run_id = run_id_short
+            if not bold_files:
                 print(f"  [WARN] No bold for {subject}/{ses_id}/{task}/{run_id} — skipping run")
                 continue
             if ses_id not in sessions:
