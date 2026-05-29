@@ -392,7 +392,64 @@ def run_notebooks(c):
     ensure_dir_exist(c, "output_data_dir")
     airoh_run_notebooks(c, notebooks_dir, output_dir, keys=["source_data_dir", "output_data_dir"])
 
+# ---------------------------------------------------------------------------
+# run-figures
+# ---------------------------------------------------------------------------
+@task
+def run_figures(c, figures=None):
+    """Generate publication figures into output_data/figures_manuscript/."""
+    from airoh.utils import run_notebooks as airoh_run_notebooks, ensure_dir_exist
 
+    repo_root     = Path.cwd()
+    notebooks_dir = repo_root / c.config.get("notebooks_dir")
+    output_dir    = (repo_root / c.config.get("output_data_dir")).resolve()
+    source_dir    = (repo_root / c.config.get("source_data_dir")).resolve()
+    figures_dir   = (repo_root / c.config.get("figures_output_dir",
+                     "output_data/figures_manuscript")).resolve()
+    figures_dir.mkdir(parents=True, exist_ok=True)
+
+    # Patch config with absolute paths so airoh injects them correctly
+    c.config["output_data_dir"]    = str(output_dir)
+    c.config["source_data_dir"]    = str(source_dir)
+    c.config["figures_output_dir"] = str(figures_dir)
+
+    nat_dir = c.config.get("naturalistic_data_dir", "")
+    if nat_dir:
+        c.config["naturalistic_data_dir"] = str(Path(nat_dir).resolve())
+
+    keys = ["output_data_dir", "source_data_dir",
+            "figures_output_dir", "naturalistic_data_dir"]
+
+    if figures:
+        requested = [f.strip() for f in figures.split(",")]
+        for fig_name in requested:
+            nb = notebooks_dir / f"{fig_name}.ipynb"
+            if not nb.exists():
+                print(f"  [SKIP] Notebook not found: {nb}")
+                continue
+            out_dir = figures_dir / fig_name
+            if out_dir.exists() and any(out_dir.iterdir()):
+                print(f"  [SKIP] {fig_name} (outputs exist)")
+                continue
+            env_str = " ".join(
+                f'{k.upper()}="{c.config.get(k, "")}"' for k in keys
+            )
+            c.run(
+                f'env {env_str} uv run jupyter nbconvert '
+                f'--to notebook --execute --inplace {nb}',
+                warn=True,
+            )
+    else:
+        airoh_run_notebooks(c, notebooks_dir, figures_dir, keys=keys)
+
+
+@task
+def clean_figures(c):
+    """Remove output_data/figures_manuscript/."""
+    from airoh.utils import clean_folder
+    clean_folder(c, "figures_output_dir", "")
+
+    
 # ---------------------------------------------------------------------------
 # run  /  run-smoke
 # ---------------------------------------------------------------------------
@@ -405,8 +462,9 @@ def run(c, smoke=False, dataset=None):
     run_subject(c, smoke=smoke, dataset=dataset)
     run_froi(c, smoke=smoke, dataset=dataset)
     run_notebooks(c)
+    run_figures(c)
     print("Pipeline complete.")
-
+    
 
 @task
 def run_smoke(c, dataset=None):
@@ -446,11 +504,10 @@ def clean_froi(c):
         clean_folder(c, "output_data_dir", f"{ds_name}/fedorenko_frois/*.nii.gz")
 
 
-@task(pre=[clean_glm, clean_subject, clean_froi])
+@task(pre=[clean_glm, clean_subject, clean_froi, clean_figures])
 def clean(c):
     """Remove all computed outputs."""
     pass
-
 
 @task
 def clean_source(c):

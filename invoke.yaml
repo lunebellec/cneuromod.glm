@@ -20,6 +20,10 @@ datasets:
   hcptrt:
     model: models/hcptrt.json
     subjects: sub-01,sub-02,sub-03,sub-04,sub-05,sub-06
+  naturalistic:
+    model: models/naturalistic.json
+    subjects: sub-01,sub-02,sub-03,sub-04,sub-05,sub-06
+
 
 # SSH URL for the ria-sequoia RIA store (set to "" to skip SSH reconfiguration)
 ria_sequoia_ssh_url: ria+ssh://elm/data/neuromod/ria-sequoia
@@ -40,3 +44,14 @@ files:
   fedorenko_atlas_txt:
     url: https://evlab.squarespace.com/s/allParcels-language-SN220.txt
     output_file: source_data/fedorenko/allParcels-language-SN220.txt
+  
+  md_atlas_nii:
+    url: https://evlab.squarespace.com/s/allParcels-MD-HE197.nii
+    output_file: source_data/fedorenko/allParcels-MD-HE197.nii
+    
+  md_atlas_txt:
+    url: https://evlab.squarespace.com/s/allParcels-MD-HE197.txt
+    output_file: source_data/fedorenko/allParcels-MD-HE197.txt
+
+figures_output_dir: output_data/figures_manuscript
+naturalistic_data_dir: ""
